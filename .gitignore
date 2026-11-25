@@ -1,0 +1,23 @@
+# Course data are unpublished: never commit them.
+data/
+derived/
+raw/
+reference/
+*.tsv
+*.tsv.gz
+*.csv.gz
+*.xlsx
+*.parquet
+*.fasta
+*.fa
+*.gff
+*.rds
+*.h5ad
+*.zip
+
+# OS / editor clutter
+.DS_Store
+Thumbs.db
+.vscode/
+.Rproj.user/
+.Rhistory

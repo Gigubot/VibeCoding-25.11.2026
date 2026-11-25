@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JE2 Proteome Quest</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+<style>
+  :root { --ink:#14202e; --muted:#667385; --line:#e2e6ec; --bg:#f5f7fa; --card:#fff; --teal:#0e8a7a; --gold:#f5b700; --up:#d55e00; --down:#0072b2; --lod:#7b5ea7; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--ink); background:var(--bg); }
+  header { position:sticky; top:0; z-index:5; display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; padding:10px 18px; background:#102030; color:#fff; }
+  header h1 { font-size:18px; margin:0; letter-spacing:.2px; }
+  header input { width:130px; }
+  .hud { display:flex; align-items:center; gap:10px; margin-left:auto; }
+  .xpbar { width:140px; height:8px; background:#2c3e50; border-radius:4px; overflow:hidden; }
+  .xpbar div { height:100%; background:linear-gradient(90deg, var(--teal), var(--gold)); }
+  .databadge { padding:3px 8px; border-radius:10px; font-size:12px; font-weight:600; }
+  .databadge.demo { background:#fde8c8; color:#7a4b00; } .databadge.real { background:#c9f0e3; color:#065b4b; }
+  main { display:grid; grid-template-columns: minmax(0,1.35fr) minmax(0,1fr); gap:14px; padding:14px 18px; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  h2 { font-size:17px; margin:0 0 4px; } h3 { margin:0 0 8px; font-size:15px; } h4 { margin:12px 0 6px; font-size:13px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:6px 0; }
+  label { font-size:12px; color:var(--muted); }
+  input, select, button { font:inherit; padding:5px 8px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink); }
+  button { background:var(--teal); color:#fff; border:none; cursor:pointer; } button:hover { filter:brightness(1.08); } button:disabled { opacity:.45; cursor:default; }
+  button.ghost { background:#eef2f6; color:var(--ink); }
+  .muted { color:var(--muted); } .warn { color:#a15c00; } .bad { color:#b3261e; }
+  code { background:#eef2f6; padding:1px 5px; border-radius:4px; font-size:12px; }
+  #volcano { height:440px; }
+  .controls { display:grid; grid-template-columns: 1fr 1fr; gap:6px 14px; }
+  .controls input[type=range] { width:100%; }
+  .counts { display:flex; gap:10px; margin:6px 0; } .count { flex:1; border-radius:8px; padding:6px 10px; font-size:20px; font-weight:700; }
+  .count small { display:block; font-size:11px; font-weight:500; } .count.up { background:#fbe6d9; color:var(--up); } .count.down { background:#dcebf6; color:var(--down); }
+  #formula p { margin:4px 0 0; font-size:12px; color:var(--muted); }
+  .meterbar { height:10px; border-radius:5px; background:linear-gradient(90deg,#3bb273 0%,#3bb273 20%,#f2c94c 20%,#f2c94c 50%,#e15554 50%); position:relative; margin-top:6px; }
+  .meterbar div { height:100%; border-right:3px solid #14202e; }
+  #meter p { margin:4px 0; }
+  .tabs { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:10px; } .tabs button { background:#eef2f6; color:var(--ink); } .tabs button.active { background:var(--ink); color:#fff; }
+  .opt { display:block; width:100%; text-align:left; margin:6px 0; background:#eef2f6; color:var(--ink); }
+  .opt.ok { background:#c9f0e3; } .opt.bad { background:#f9d6d3; }
+  .streak { float:right; font-weight:600; } .q { font-size:15px; } .tag { font-size:11px; padding:1px 6px; border-radius:8px; background:#e5eefc; color:#1d4f91; } .tag.hard { background:#fde2e1; color:#a1271f; } .tag.warn { background:#fde8c8; color:#7a4b00; }
+  .explain { background:#f6f8fb; border-radius:8px; padding:8px 10px; margin-top:8px; }
+  .clues li { margin:4px 0; }
+  .badges { display:grid; grid-template-columns: repeat(auto-fill, minmax(130px,1fr)); gap:8px; }
+  .badge { border:1px dashed var(--line); border-radius:8px; padding:8px; opacity:.45; text-align:center; } .badge.got { opacity:1; border:1px solid var(--gold); background:#fff9e6; }
+  .badge span { font-size:22px; display:block; } .badge small { display:block; color:var(--muted); font-size:11px; }
+  table { border-collapse:collapse; width:100%; font-size:12px; } th, td { text-align:left; padding:3px 6px; border-bottom:1px solid var(--line); } tr[data-id] { cursor:pointer; } tr[data-id]:hover { background:#f1f6ff; }
+  tr.hit td:first-child { border-left:3px solid var(--gold); } tr.me { font-weight:700; }
+  #results, .tablewrap { max-height:320px; overflow:auto; }
+  .dexgrid { display:grid; grid-template-columns: repeat(auto-fill, minmax(110px,1fr)); gap:6px; }
+  .dex { background:#f6f8fb; color:var(--ink); text-align:left; border:1px solid var(--line); } .dex small { display:block; color:var(--muted); font-size:10px; }
+  .dex.star { border-color:#65cbf3; } .dex.star b::after { content:" 🧊"; } .dex.legend { background:#fff3c4; }
+  #cardSection { grid-column: 1 / -1; } #card:empty::before { content:"Click a point, a table row or a Pokédex entry to open a protein card."; color:var(--muted); }
+  .cardhead { display:flex; justify-content:space-between; gap:10px; } .cardhead p { margin:2px 0; }
+  .links a { margin-right:12px; }
+  .cardgrid, .seqgrid { display:grid; grid-template-columns: 1fr 1fr; gap:14px; } @media (max-width: 900px) { .cardgrid, .seqgrid { grid-template-columns:1fr; } }
+  #viewer { position:relative; height:380px; border:1px solid var(--line); border-radius:8px; }
+  #seq pre { font:12px/1.5 ui-monospace, Menlo, Consolas, monospace; max-height:380px; overflow:auto; background:#f6f8fb; padding:8px; border-radius:8px; }
+  #seq .pos { color:#9aa5b4; } #seq .site { background:#d6007a; color:#fff; border-radius:3px; font-weight:700; } #seq .motif { background:#ffe066; } #seq .site.motif { outline:2px solid #ffe066; }
+  #modal { display:none; position:fixed; inset:0; background:rgba(16,32,48,.55); z-index:20; align-items:center; justify-content:center; } #modal.open { display:flex; }
+  .modalbox { background:#fff; border-radius:12px; padding:18px; max-width:520px; width:92%; }
+  #toasts { position:fixed; right:16px; bottom:16px; display:flex; flex-direction:column; gap:6px; z-index:30; }
+  .toast { background:#102030; color:#fff; padding:8px 12px; border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.2); animation:pop .25s ease-out; max-width:340px; }
+  .toast.gold { background:#7a5a00; } .toast.bad { background:#8c2a22; }
+  @keyframes pop { from { transform:translateY(10px); opacity:0; } }
+  .loadbox { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 18px; background:#e8eef5; border-bottom:1px solid var(--line); font-size:13px; }
+  .filebtn { position:relative; overflow:hidden; display:inline-block; background:var(--ink); color:#fff; padding:5px 10px; border-radius:6px; cursor:pointer; }
+  .filebtn input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🧬 JE2 Proteome Quest</h1>
+  <span id="dataBadge" class="databadge demo">DEMO</span>
+  <div class="hud">
+    <label for="player" style="color:#c9d3df">Player</label><input id="player" maxlength="24">
+    <b id="hudLevel"></b><div class="xpbar"><div id="hudBar"></div></div><span id="hudXP"></span><span id="hudBadges"></span>
+  </div>
+</header>
+<div class="loadbox">
+  <label class="filebtn">📂 Load course folder<input id="folder" type="file" webkitdirectory directory multiple></label>
+  <label for="datasetSel">Dataset</label>
+  <select id="datasetSel"><option value="total">total proteome</option><option value="phospho_STYH">phosphosites STYH</option><option value="phospho_STY">phosphosites STY (older run)</option></select>
+  <button id="demoBtn" class="ghost">Back to demo</button>
+  <span id="loadStatus" class="muted">Demo data: simulated values. Pick your local course <code>data</code> or <code>derived</code> folder to play with the real data — files are read in your browser and never uploaded.</span>
+</div>
+
+<main>
+  <section>
+    <div class="row"><label for="contrastSel">Contrast</label><select id="contrastSel" style="flex:1"></select></div>
+    <div class="controls">
+      <div><label>FDR cutoff &lt; <b id="fdrVal"></b></label><input id="fdrSlider" type="range" min="0.001" max="0.5" step="0.001"></div>
+      <div><label>|log2 effect| &gt; <b id="lfcVal"></b></label><input id="lfcSlider" type="range" min="0" max="4" step="0.05"></div>
+    </div>
+    <div class="row"><label><input id="showLod" type="checkbox" checked> show lod_imputed estimates (×)</label>
+      <button id="resetCut" class="ghost">Course default (0.1 / 1)</button><button id="exportBtn" class="ghost">⬇ Export hits CSV</button>
+      <span class="muted">Tip: drag the dashed lines. Camera icon = SVG.</span></div>
+    <div id="formula"></div>
+    <div class="counts" id="counts"></div>
+    <div id="volcano"></div>
+    <h4>📉 False-discovery meter</h4>
+    <div id="meter"></div>
+  </section>
+
+  <section>
+    <div class="tabs">
+      <button class="active" data-tab="tSniper">🎯 Sign Sniper</button><button data-tab="tMystery">🕵️ Mystery</button>
+      <button data-tab="tHunt">🧬 Family Hunt</button><button data-tab="tDex">📖 Pokédex</button>
+      <button data-tab="tSearch">🔎 Browser</button><button data-tab="tBadges">🏆 Badges</button><button data-tab="tHelp">❓ How to play</button>
+    </div>
+    <div class="tabpane" id="tSniper"><h3>🎯 Sign Sniper</h3><p class="muted">Read the sign correctly: <code>A_vs_B</code> means diff = log2(A) − log2(B).</p><div id="sniper"></div></div>
+    <div class="tabpane" id="tMystery" hidden><h3>🕵️ Mystery Protein</h3><div id="mystery"></div></div>
+    <div class="tabpane" id="tHunt" hidden><h3>🧬 Family Hunt</h3><div id="hunt"></div></div>
+    <div class="tabpane" id="tDex" hidden><h3>📖 Protein Pokédex</h3><p class="muted" id="dexCount"></p><div class="dexgrid" id="dexGrid"></div></div>
+    <div class="tabpane" id="tSearch" hidden><h3>🔎 Protein browser</h3>
+      <div class="row"><input id="search" placeholder="gene, locus tag, product, UniProt…" style="flex:1"><label><input id="onlyHits" type="checkbox"> hits only</label></div><div id="results"></div></div>
+    <div class="tabpane" id="tBadges" hidden><h3>🏆 Badges</h3><div class="badges" id="badgeGrid"></div>
+      <h4>Leaderboard (this browser)</h4><table><thead><tr><th></th><th>player</th><th>XP</th><th>badges</th></tr></thead><tbody id="leaderboard"></tbody></table></div>
+    <div class="tabpane" id="tHelp" hidden><h3>❓ How to play</h3>
+      <ul>
+        <li><b>Volcano:</b> pick a contrast, move the sliders or drag the dashed lines. Counts and the plain-English direction update live.</li>
+        <li><b>🪤 LOD Trap:</b> clicking a purple × (an estimate with <code>lod_imputed</code>) asks what the flag means before the card opens.</li>
+        <li><b>📉 Meter:</b> with Benjamini–Hochberg at cutoff q, up to q × (number of hits) of your hits are expected to be false. Loosen past 0.25 and come back to ≤ 0.1 for a badge.</li>
+        <li><b>🎯 Sign Sniper:</b> decide which group has more. After a 5-answer streak, interaction questions appear: R<sub>g</sub> = log2(SN<sub>g</sub>) − log2(TSB<sub>g</sub>).</li>
+        <li><b>🕵️ Mystery:</b> fewer clues = more XP. <b>🧬 Family Hunt:</b> catch every family member that passes your cutoffs.</li>
+        <li><b>📖 Pokédex:</b> every opened protein is collected; 🧊 = AlphaFold structure viewed. AlphaFold models are NCTC8325 reference proteins, so JE2 residue numbers can differ.</li>
+        <li>Plot per-sample values before trusting a fold change. Missing values are NA, never 0. PASN is spent medium, not co-culture. The stp mutant also has less Stk1.</li>
+      </ul></div>
+  </section>
+
+  <section id="cardSection"><div id="card"></div></section>
+</main>
+<datalist id="entityList"></datalist>
+<div id="modal"></div>
+<div id="toasts"></div>
+<script src="demo_data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
