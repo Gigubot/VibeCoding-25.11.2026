@@ -145,7 +145,7 @@ const DATA = {
   abund: new Map(), sites: new Map(), seqs: new Map(), files: null, demoMeans: null,
 };
 let EXPLORER = new Map(); // category -> Map(pathway -> {ids:Set, sub:Map})
-let CATCH = new Map();    // group -> [ids]
+
 function indexRows() {
   DATA.index = new Map(); DATA.contrasts = [...DATA.rows.keys()];
   for (const [c, arr] of DATA.rows) DATA.index.set(c, new Map(arr.map(r => [r.id, r])));
@@ -374,8 +374,8 @@ const BADGES = {
   int_master: ['🧠', 'Interaction thinker', 'Answer 5 interaction questions correctly'],
   lod3: ['🪤', 'Trap spotter', 'Recognise 3 LOD-imputed estimates'],
   reformed: ['😇', 'Reformed p-hacker', 'Loosen FDR above 0.25, then return to ≤ 0.1'],
-  catcher300: ['🧪', 'Beaker boss', '300 points in one Family Catcher game'],
-  combo10: ['🔥', 'Catch streak', 'Combo ×10 in Family Catcher'],
+  catcher300: ['🌋', 'Eruption expert', '300 points in one Volcano Eruption game'],
+  combo10: ['🔥', 'Hot streak', 'Combo ×10 in Volcano Eruption'],
   explorer5: ['🗺️', 'Pathfinder', 'Visit 5 pathways'],
   explorer15: ['🧭', 'Cartographer', 'Visit 15 pathways'],
   struct3: ['🧊', 'Structural biologist', 'View 3 AlphaFold structures'],
@@ -587,105 +587,149 @@ function sniperOver() {
   sniperIntro(`<div class="gameover"><h3>GAME OVER</h3><p>⭐ ${SN.score} points · ${SN.correct} correct</p>${extra}</div>`);
 }
 
-/* 9c. Family Catcher — falling-bubble arcade on a canvas */
-const CG = { running: false };
-function catcherIntro(extra = '') {
-  const groups = [...CATCH.entries()].filter(([, ids]) => ids.length <= 260).sort((a, b) => a[0].localeCompare(b[0]));
-  const sel = CG.group && CATCH.has(CG.group) ? CG.group : (CATCH.has('Ribosomal protein') ? 'Ribosomal protein' : groups[0]?.[0]);
-  $('#catcher').innerHTML = `<div class="arcade-intro">${extra}<div class="bigicon">🧪</div><h4>Family Catcher</h4>
-    <p>Proteins rain down. Catch members of your family with the beaker, dodge the impostors!</p>
-    <div class="row" style="justify-content:center"><select id="cgGroup">${groups.map(([g, ids]) => `<option value="${esc(g)}" ${g === sel ? 'selected' : ''}>${esc(g)} (${ids.length})</option>`).join('')}</select></div>
-    <p class="muted" id="cgExamples"></p>
-    <p>❤️❤️❤️ 3 lives · ⭐ gold ring = significant in the current contrast (bonus) · 🛡 shield blocks one mistake · speed keeps rising</p>
-    <p>Your best: <b>${me().catcherBest}</b></p><button id="cgStart" class="big">▶ PLAY</button><p class="muted">Move with the mouse, finger or ← →</p></div>`;
-  const showEx = () => { const ids = CATCH.get($('#cgGroup').value) || []; $('#cgExamples').innerHTML = 'Members look like: ' + ids.slice(0, 7).map(id => `<b>${esc(DATA.entities.get(id).name)}</b>`).join(', ') + '…'; };
-  if (groups.length) { $('#cgGroup').onchange = showEx; showEx(); $('#cgStart').onclick = () => catcherStart($('#cgGroup').value); }
-  else $('#cgStart').disabled = true;
+/* 9c. Volcano Eruption — proteins erupt and land at their real volcano-plot position.
+ * Click the ones in the shaded corners (significant AND big change); leave the grey middle; never click a purple ✕.
+ * No biology knowledge needed: the rule is purely where a point lands. */
+const ER = { running: false };
+const ER_RULES = [[0.1, 1], [0.05, 1], [0.1, 1.5], [0.01, 1], [0.05, 2], [0.1, 0.5], [0.01, 1.5], [0.05, 0.75]];
+function eruptionIntro(extra = '') {
+  const info = contrastInfo(UI.contrast);
+  $('#catcher').innerHTML = `<div class="arcade-intro">${extra}<div class="bigicon">🌋</div><h4>Volcano Eruption</h4>
+    <p>The volcano erupts proteins. Each one lands at its <b>real spot</b> on the volcano plot of <code>${esc(UI.contrast)}</code>.</p>
+    <div class="howto"><div><span class="zone o"></span> <b>Click</b> dots landing in the coloured corners — big change <i>and</i> significant</div>
+      <div><span class="zone g"></span> <b>Leave</b> the grey middle alone — that's noise</div>
+      <div><span class="lodx">✕</span> <b>Never</b> click a purple ✕ — an imputed estimate, not a real measurement</div></div>
+    <p>❤️❤️❤️ 3 lives · ⚡ click fast for bonus points · combos multiply · every 100 points the <b>rules change</b> (new cutoffs!)</p>
+    <p class="muted">Orange corner = ${esc(info.pos)} · blue corner = ${esc(info.neg)}</p>
+    <p>Your best: <b>${me().catcherBest}</b></p><button id="erStart" class="big">▶ PLAY</button><p class="muted">No biology knowledge needed — just watch where they land. Change the contrast on the left for a new map.</p></div>`;
+  $('#erStart').onclick = eruptionStart;
 }
-function catcherStart(group) {
-  const members = new Set(CATCH.get(group) || []); if (!members.size) return;
-  const idx = DATA.index.get(UI.contrast);
-  const decoys = [...DATA.entities.keys()].filter(id => !members.has(id));
-  $('#catcher').innerHTML = `<canvas id="cgCanvas" tabindex="0"></canvas><div class="row"><button id="cgStop" class="ghost">■ Stop</button><span class="muted">Family: <b>${esc(group)}</b> · contrast <code>${esc(UI.contrast)}</code></span></div>`;
-  const cv = $('#cgCanvas'), dpr = window.devicePixelRatio || 1; const W = cv.clientWidth || 460, H = 400;
+const erHit = r => !r.lod && r.fdr < ER.fdr && Math.abs(r.diff) > ER.lfc;
+function eruptionStart() {
+  const rows = rowsNow().filter(r => Number.isFinite(r.diff) && Number.isFinite(r.fdr));
+  if (rows.length < 20) { eruptionIntro('<p class="bad">Not enough data in this contrast.</p>'); return; }
+  $('#catcher').innerHTML = `<canvas id="erCanvas"></canvas><div class="row"><button id="erStop" class="ghost">■ Stop</button><span class="muted">contrast <code>${esc(UI.contrast)}</code> · click dots in the coloured corners</span></div>`;
+  const cv = $('#erCanvas'), dpr = window.devicePixelRatio || 1; const W = cv.clientWidth || 460, H = 420;
   cv.width = W * dpr; cv.height = H * dpr; cv.style.height = `${H}px`; const ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
-  Object.assign(CG, { running: true, group, members, decoys, idx, ctx, W, H, px: W / 2, pw: 96, bubbles: [], floaters: [], score: 0, lives: 3, combo: 0, best: 0, shield: false, caught: new Map(), t0: performance.now(), last: performance.now(), nextSpawn: 0 });
-  const move = x => { CG.px = Math.max(CG.pw / 2, Math.min(W - CG.pw / 2, x)); };
-  cv.onmousemove = ev => move(ev.offsetX);
-  cv.ontouchmove = ev => { const r = cv.getBoundingClientRect(); move(ev.touches[0].clientX - r.left); ev.preventDefault(); };
-  $('#cgStop').onclick = () => catcherOver(true);
-  cv.focus(); SFX.play('start'); requestAnimationFrame(catcherLoop);
+  const xs = rows.map(r => Math.abs(r.diff)).sort((a, b) => a - b), ys = rows.map(yOf).sort((a, b) => a - b);
+  const xmax = Math.min(6, Math.max(2.5, xs[Math.floor(xs.length * 0.99)] * 1.1)), ymax = Math.max(3, ys[Math.floor(ys.length * 0.99)] * 1.1);
+  const pad = { l: 14, r: 14, t: 52, b: 46 };
+  const px = d => pad.l + (Math.max(-xmax, Math.min(xmax, d)) + xmax) / (2 * xmax) * (W - pad.l - pad.r);
+  const py = y => H - pad.b - Math.min(y, ymax) / ymax * (H - pad.t - pad.b);
+  Object.assign(ER, { running: true, rows, ctx, W, H, pad, px, py, xmax, ymax, info: contrastInfo(UI.contrast), dots: [], floaters: [], puffs: [],
+    score: 0, lives: 3, combo: 0, best: 0, good: 0, bad: 0, level: 0, caught: new Map(), t0: performance.now(), last: performance.now(), nextSpawn: 0, shake: 0 });
+  eruptionRules(0);
+  cv.onpointerdown = ev => { const r = cv.getBoundingClientRect(); eruptionClick(ev.clientX - r.left, ev.clientY - r.top); };
+  $('#erStop').onclick = () => eruptionOver(true);
+  SFX.play('start'); requestAnimationFrame(eruptionLoop);
 }
-function catcherSpawn() {
-  const isShield = Math.random() < 0.04; const member = !isShield && Math.random() < 0.45;
-  const id = isShield ? null : member ? pick([...CG.members]) : pick(CG.decoys); const e = id ? DATA.entities.get(id) : null;
-  const r = id ? CG.idx?.get(id) : null;
-  CG.bubbles.push({ id, member, shield: isShield, x: 36 + Math.random() * (CG.W - 72), y: -34, r: 31,
-    label: e ? e.name.slice(0, 11) : '🛡', sub: e ? (e.product || '').slice(0, 18) : 'SHIELD', diff: r?.diff, sig: r ? isHit(r) : false, wob: Math.random() * 6 });
+function eruptionRules(lv) {
+  const [f, l] = lv === 0 ? [UI.fdr <= 0.5 ? UI.fdr : 0.1, UI.lfc || 1] : pick(ER_RULES.filter(([a, b]) => a !== ER.fdr || b !== ER.lfc));
+  ER.fdr = f; ER.lfc = l; ER.level = lv;
+  ER.pools = { hit: ER.rows.filter(erHit), lod: ER.rows.filter(r => r.lod), ns: ER.rows.filter(r => !r.lod && !erHit(r)) };
+  ER.pools.near = ER.pools.ns.filter(r => Math.abs(r.diff) > ER.lfc * 0.6 || yOf(r) > -Math.log10(ER.fdr) * 0.7); // tricky near-misses
+  ER.banner = { text: lv ? `⚠️ NEW RULES! FDR < ${f} · |log2| > ${l}` : `RULES: FDR < ${f} · |log2| > ${l}`, t: 0 };
+  if (lv) { SFX.play('levelup'); memeFly('good'); }
 }
-function catcherLoop(ts) {
-  if (!CG.running) return;
-  const dt = Math.min(0.05, (ts - CG.last) / 1000); CG.last = ts; const el = (ts - CG.t0) / 1000;
-  const speed = Math.min(270, 70 + el * 3.2), interval = Math.max(360, 1050 - el * 14);
-  if (ts > CG.nextSpawn) { catcherSpawn(); CG.nextSpawn = ts + interval; }
-  const { ctx, W, H } = CG; const by = H - 34;
-  for (const b of CG.bubbles) { b.y += speed * dt; b.x += Math.sin(ts / 400 + b.wob) * 0.4; }
-  for (const b of [...CG.bubbles]) {
-    const inX = Math.abs(b.x - CG.px) < CG.pw / 2 + b.r * 0.5;
-    if (b.y + b.r >= by - 6 && b.y - b.r <= by + 10 && inX) { CG.bubbles.splice(CG.bubbles.indexOf(b), 1); catcherCatch(b); continue; }
-    if (b.y - b.r > H) { CG.bubbles.splice(CG.bubbles.indexOf(b), 1); if (b.member) { if (CG.combo >= 3) floater(b.x, H - 60, `missed ${b.label}`, '#ff8a80'); CG.combo = 0; } }
+function eruptionSpawn(now) {
+  const P = ER.pools, u = Math.random(); let pool;
+  if (u < 0.42) pool = P.hit; else if (u < 0.52) pool = P.lod; else if (u < 0.72 && P.near.length) pool = P.near; else pool = P.ns;
+  if (!pool.length) pool = ER.rows;
+  const row = pick(pool); const el = (now - ER.t0) / 1000;
+  ER.dots.push({ row, e: DATA.entities.get(row.id), tx: ER.px(row.diff), ty: ER.py(yOf(row)), age: 0, fly: 0.6, arc: 60 + Math.random() * 90,
+    life: Math.max(1.0, 2.6 - ER.level * 0.22 - el * 0.008) });
+  for (let i = 0; i < 6; i++) ER.puffs.push({ x: ER.W / 2 + (Math.random() - 0.5) * 20, y: ER.H - ER.pad.b + 4, vx: (Math.random() - 0.5) * 60, vy: -40 - Math.random() * 60, t: 0 });
+}
+function eruptionLoop(ts) {
+  if (!ER.running) return;
+  const dt = Math.min(0.05, (ts - ER.last) / 1000); ER.last = ts; const el = (ts - ER.t0) / 1000;
+  const interval = Math.max(380, 1100 - el * 9 - ER.level * 60);
+  if (ts > ER.nextSpawn) { eruptionSpawn(ts); ER.nextSpawn = ts + interval; }
+  for (const d of [...ER.dots]) {
+    d.age += dt;
+    if (d.age > d.fly + d.life) { ER.dots.splice(ER.dots.indexOf(d), 1); if (erHit(d.row)) { if (ER.combo >= 3) erFloat(d.tx, d.ty, `missed ${d.e.name}`, '#ff8a80'); ER.combo = 0; } }
   }
-  // draw
-  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#0f2233'); g.addColorStop(1, '#173b4f'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  for (const b of CG.bubbles) {
-    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
-    ctx.fillStyle = b.shield ? '#4fc3f7' : b.diff == null ? '#7f8c99' : b.diff > 0 ? 'rgba(213,94,0,.88)' : 'rgba(0,114,178,.88)'; ctx.fill();
-    if (b.sig) { ctx.lineWidth = 4; ctx.strokeStyle = '#f5b700'; ctx.stroke(); }
-    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.font = 'bold 12px system-ui'; ctx.fillText(b.label, b.x, b.y + 1);
-    ctx.font = '8px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillText(b.sub, b.x, b.y + 13);
+  const { ctx, W, H, pad, px, py } = ER; const x0 = px(-ER.lfc), x1 = px(ER.lfc), yf = py(-Math.log10(ER.fdr));
+  ctx.save(); if (ER.shake > 0) { ER.shake -= dt; ctx.translate((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8); }
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#0d1b2a'); g.addColorStop(1, '#2a1a1a'); ctx.fillStyle = g; ctx.fillRect(-10, -10, W + 20, H + 20);
+  // zones
+  ctx.fillStyle = 'rgba(150,160,175,.10)'; ctx.fillRect(pad.l, pad.t, W - pad.l - pad.r, H - pad.t - pad.b);
+  ctx.fillStyle = 'rgba(0,114,178,.30)'; ctx.fillRect(pad.l, pad.t, x0 - pad.l, yf - pad.t);
+  ctx.fillStyle = 'rgba(213,94,0,.30)'; ctx.fillRect(x1, pad.t, W - pad.r - x1, yf - pad.t);
+  ctx.setLineDash([6, 5]); ctx.lineWidth = 2; ctx.strokeStyle = '#e69f00';
+  ctx.beginPath(); ctx.moveTo(x0, pad.t); ctx.lineTo(x0, H - pad.b); ctx.moveTo(x1, pad.t); ctx.lineTo(x1, H - pad.b); ctx.stroke();
+  ctx.strokeStyle = '#29d391'; ctx.beginPath(); ctx.moveTo(pad.l, yf); ctx.lineTo(W - pad.r, yf); ctx.stroke(); ctx.setLineDash([]);
+  ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'left'; ctx.fillStyle = '#8ec9ff'; ctx.fillText('★ HIT ZONE', pad.l + 4, pad.t + 14);
+  ctx.textAlign = 'right'; ctx.fillStyle = '#ffb380'; ctx.fillText('HIT ZONE ★', W - pad.r - 4, pad.t + 14);
+  ctx.font = '10px system-ui'; ctx.fillStyle = '#9aa8b8'; ctx.textAlign = 'left'; ctx.fillText(`◀ ${ER.info.neg}`.slice(0, 40), pad.l, H - 8);
+  ctx.textAlign = 'right'; ctx.fillText(`${ER.info.pos} ▶`.slice(0, 40), W - pad.r, H - 8);
+  // volcano
+  const vx = W / 2, vy = H - pad.b + 6;
+  ctx.fillStyle = '#5a3a2a'; ctx.beginPath(); ctx.moveTo(vx - 70, H - 18); ctx.lineTo(vx - 14, vy); ctx.lineTo(vx + 14, vy); ctx.lineTo(vx + 70, H - 18); ctx.fill();
+  ctx.fillStyle = `rgba(255,${120 + 60 * Math.sin(ts / 150)},0,.9)`; ctx.beginPath(); ctx.ellipse(vx, vy, 15, 5, 0, 0, Math.PI * 2); ctx.fill();
+  for (const p of [...ER.puffs]) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; ctx.globalAlpha = Math.max(0, 1 - p.t); ctx.fillStyle = '#ff9f43'; ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, 7); ctx.fill(); ctx.globalAlpha = 1; if (p.t > 1) ER.puffs.splice(ER.puffs.indexOf(p), 1); }
+  // dots
+  for (const d of ER.dots) {
+    const u = Math.min(1, d.age / d.fly), ease = 1 - (1 - u) ** 2;
+    const x = vx + (d.tx - vx) * ease, y = vy + (d.ty - vy) * ease - d.arc * 4 * u * (1 - u);
+    if (u < 1) { ctx.fillStyle = '#ffd166'; ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.fill(); continue; }
+    const left = 1 - (d.age - d.fly) / d.life;
+    if (d.row.lod) {
+      ctx.strokeStyle = '#c39bff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(x - 8, y - 8); ctx.lineTo(x + 8, y + 8); ctx.moveTo(x + 8, y - 8); ctx.lineTo(x - 8, y + 8); ctx.stroke();
+    } else {
+      ctx.fillStyle = '#ffffff'; ctx.shadowColor = '#fff'; ctx.shadowBlur = 8; ctx.beginPath(); ctx.arc(x, y, 8, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+    }
+    ctx.strokeStyle = left > 0.35 ? '#29d391' : '#ff6b6b'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x, y, 13, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * left); ctx.stroke();
+    ctx.font = '10px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText(d.e.name.slice(0, 12), x, y - 17);
   }
-  // beaker
-  ctx.fillStyle = CG.shield ? 'rgba(79,195,247,.35)' : 'rgba(255,255,255,.12)'; ctx.strokeStyle = '#e8f1f8'; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.moveTo(CG.px - CG.pw / 2, by - 10); ctx.lineTo(CG.px - CG.pw / 2 + 8, by + 22); ctx.lineTo(CG.px + CG.pw / 2 - 8, by + 22); ctx.lineTo(CG.px + CG.pw / 2, by - 10); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#29d391'; ctx.fillRect(CG.px - CG.pw / 2 + 10, by + 8, CG.pw - 20, 12);
-  // floaters + HUD
+  // floaters, banner, HUD
   ctx.textAlign = 'center';
-  for (const f of [...CG.floaters]) { f.t += dt; f.y -= 40 * dt; ctx.globalAlpha = Math.max(0, 1 - f.t / 1.2); ctx.fillStyle = f.c; ctx.font = 'bold 14px system-ui'; ctx.fillText(f.s, f.x, f.y); ctx.globalAlpha = 1; if (f.t > 1.2) CG.floaters.splice(CG.floaters.indexOf(f), 1); }
+  for (const f of [...ER.floaters]) { f.t += dt; f.y -= 36 * dt; ctx.globalAlpha = Math.max(0, 1 - f.t / 1.4); ctx.fillStyle = f.c; ctx.font = 'bold 13px system-ui'; ctx.fillText(f.s, Math.max(70, Math.min(W - 70, f.x)), f.y); ctx.globalAlpha = 1; if (f.t > 1.4) ER.floaters.splice(ER.floaters.indexOf(f), 1); }
+  if (ER.banner && ER.banner.t < 2.4) { ER.banner.t += dt; ctx.globalAlpha = Math.min(1, 2.4 - ER.banner.t); ctx.fillStyle = '#f5b700'; ctx.font = 'bold 20px system-ui'; ctx.fillText(ER.banner.text, W / 2, H / 2 - 20); ctx.globalAlpha = 1; }
   ctx.textAlign = 'left'; ctx.font = 'bold 15px system-ui'; ctx.fillStyle = '#fff';
-  ctx.fillText(`${'❤️'.repeat(CG.lives)}${'🤍'.repeat(Math.max(0, 3 - CG.lives))}  ⭐ ${CG.score}  combo ×${CG.combo}${CG.shield ? '  🛡' : ''}`, 10, 22);
-  ctx.textAlign = 'right'; ctx.font = '12px system-ui'; ctx.fillStyle = '#9fd8ff'; ctx.fillText(`catch: ${CG.group}`, W - 10, 22);
-  if (CG.lives <= 0) return catcherOver();
-  requestAnimationFrame(catcherLoop);
+  ctx.fillText(`${'❤️'.repeat(ER.lives)}${'🤍'.repeat(Math.max(0, 3 - ER.lives))}  ⭐ ${ER.score}  combo ×${ER.combo}`, 10, 22);
+  ctx.textAlign = 'right'; ctx.font = '12px system-ui'; ctx.fillStyle = '#9fd8ff'; ctx.fillText(`level ${ER.level + 1} · FDR < ${ER.fdr} · |log2| > ${ER.lfc}`, W - 10, 22);
+  ctx.restore();
+  if (ER.lives <= 0) return eruptionOver();
+  requestAnimationFrame(eruptionLoop);
 }
-function floater(x, y, s, c) { CG.floaters.push({ x, y, s, c, t: 0 }); }
-function catcherCatch(b) {
-  if (b.shield) { CG.shield = true; SFX.play('shield'); floater(b.x, b.y, '🛡 SHIELD!', '#4fc3f7'); return; }
-  if (b.member) {
-    CG.combo++; CG.best = Math.max(CG.best, CG.combo); const mult = 1 + Math.floor(CG.combo / 5); const pts = (10 + (b.sig ? 10 : 0)) * mult; CG.score += pts;
-    CG.caught.set(b.id, (CG.caught.get(b.id) || 0) + 1); SFX.play('catch', CG.combo);
-    floater(b.x, b.y, `+${pts}${b.sig ? ' ⭐' : ''}`, b.sig ? '#f5b700' : '#29d391');
-    if (CG.combo % 5 === 0) { memeFly(CG.combo % 15 === 0 ? 'big' : 'good'); addXP(5 * mult, `catch streak ×${CG.combo}`, { combo: CG.combo, quiet: true }); }
-    if (CG.combo >= 10) award('combo10');
-  } else if (CG.shield) { CG.shield = false; SFX.play('shield'); floater(b.x, b.y, `🛡 blocked ${b.label}`, '#4fc3f7'); }
-  else {
-    CG.lives--; CG.combo = 0; addXP(-3, `${b.label} is not ${CG.group}`); floater(b.x, b.y, `✗ ${b.label}: impostor!`, '#ff6b6b');
-    if (CG.lives > 0) memeFly('bad'); else setTimeout(() => catcherOver(), 0);
+function erFloat(x, y, s, c) { ER.floaters.push({ x, y, s, c, t: 0 }); }
+function eruptionClick(x, y) {
+  if (!ER.running) return;
+  let best = null, bd = 20;
+  for (const d of ER.dots) { if (d.age < d.fly) continue; const dd = Math.hypot(d.tx - x, d.ty - y); if (dd < bd) { bd = dd; best = d; } }
+  if (!best) return;
+  ER.dots.splice(ER.dots.indexOf(best), 1); const r = best.row, name = best.e.name;
+  if (erHit(r)) {
+    ER.combo++; ER.good++; ER.best = Math.max(ER.best, ER.combo);
+    const quick = (best.age - best.fly) < best.life * 0.4; const pts = (10 + (quick ? 5 : 0)) * (1 + Math.floor(ER.combo / 5)); ER.score += pts;
+    ER.caught.set(r.id, (ER.caught.get(r.id) || 0) + 1); SFX.play('catch', ER.combo);
+    erFloat(best.tx, best.ty - 20, `+${pts}${quick ? ' ⚡' : ''} ${name} ${r.diff > 0 ? '▲' : '▼'}`, r.diff > 0 ? '#ffb380' : '#8ec9ff');
+    if (ER.combo % 5 === 0) { memeFly(ER.combo % 15 === 0 ? 'big' : 'good'); addXP(5 * (1 + Math.floor(ER.combo / 5)), `eruption streak ×${ER.combo}`, { combo: ER.combo, quiet: true }); }
+    if (ER.combo >= 10) award('combo10');
+    if (ER.score >= (ER.level + 1) * 100) eruptionRules(ER.level + 1);
+  } else {
+    ER.lives--; ER.combo = 0; ER.bad++; ER.shake = 0.25;
+    if (r.lod) { addXP(-3, 'clicked an imputed estimate'); erFloat(best.tx, best.ty - 20, `✕ ${name}: imputed, not measured!`, '#c39bff'); }
+    else { addXP(-3, 'not a hit'); erFloat(best.tx, best.ty - 20, `${name}: inside the cutoffs = noise`, '#ff6b6b'); }
+    if (ER.lives > 0) memeFly('bad'); else setTimeout(() => eruptionOver(), 0);
   }
 }
-function catcherOver(stopped = false) {
-  if (!CG.running) return; CG.running = false; SFX.play('gameover'); const p = me(); let extra = '';
-  const xp = Math.round(CG.score / 5); if (xp) addXP(xp, 'Family Catcher');
-  if (CG.score > p.catcherBest) { p.catcherBest = CG.score; saveStore(); if (CG.score > 0) { extra = '<p class="record">🏆 NEW HIGH SCORE!</p>'; setTimeout(() => memeFly('big'), 500); } }
-  if (CG.score >= 300) award('catcher300'); renderBadges();
-  const caught = [...CG.caught.keys()].map(id => DATA.entities.get(id)).filter(Boolean);
-  catcherIntro(`<div class="gameover"><h3>${stopped ? 'STOPPED' : 'GAME OVER'}</h3><p>⭐ ${CG.score} points · best combo ×${CG.best} · ${caught.length} different ${esc(CG.group)} proteins caught</p>${extra}
-    ${caught.length ? `<p class="muted">Learn your catch (click to open):</p><div class="chips">${caught.map(e => `<button class="mini" data-id="${esc(e.id)}">${esc(e.name)}</button>`).join('')}</div>` : ''}</div>`);
+function eruptionOver(stopped = false) {
+  if (!ER.running) return; ER.running = false; SFX.play('gameover'); const p = me(); let extra = '';
+  const xp = Math.round(ER.score / 5); if (xp) addXP(xp, 'Volcano Eruption');
+  if (ER.score > p.catcherBest) { p.catcherBest = ER.score; saveStore(); if (ER.score > 0) { extra = '<p class="record">🏆 NEW HIGH SCORE!</p>'; setTimeout(() => memeFly('big'), 500); } }
+  if (ER.score >= 300) award('catcher300'); renderBadges();
+  const acc = ER.good + ER.bad ? Math.round(100 * ER.good / (ER.good + ER.bad)) : 0;
+  const caught = [...ER.caught.keys()].map(id => DATA.entities.get(id)).filter(Boolean).slice(0, 30);
+  eruptionIntro(`<div class="gameover"><h3>${stopped ? 'STOPPED' : 'GAME OVER'}</h3><p>⭐ ${ER.score} points · level ${ER.level + 1} · best combo ×${ER.best} · accuracy ${acc}%</p>${extra}
+    ${caught.length ? `<p class="muted">The hits you caught (click one to see what it is):</p><div class="chips">${caught.map(e => `<button class="mini" data-id="${esc(e.id)}">${esc(e.name)}</button>`).join('')}</div>` : ''}</div>`);
   $('#catcher').querySelectorAll('.mini').forEach(b => b.onclick = () => openCard(b.dataset.id));
 }
 
 /* 9d. Pathway Explorer — category → pathway → protein → AlphaFold 3D */
 function computeGroups() {
-  EXPLORER = new Map(); CATCH = new Map();
+  EXPLORER = new Map();
   const add = (cat, pw, id, sub = '') => {
     if (!cat || !pw) return; if (!EXPLORER.has(cat)) EXPLORER.set(cat, new Map()); const m = EXPLORER.get(cat);
     if (!m.has(pw)) m.set(pw, { ids: new Set(), sub: new Map() }); const o = m.get(pw); o.ids.add(id); if (sub) o.sub.set(id, sub);
@@ -696,7 +740,6 @@ function computeGroups() {
     if (e.family) add(FAM_CAT, e.family, e.id);
   }
   for (const [cat, m] of EXPLORER) { for (const [pw, o] of m) if (o.ids.size < 2) m.delete(pw); if (!m.size) EXPLORER.delete(cat); }
-  for (const [cat, m] of EXPLORER) for (const [pw, o] of m) if (o.ids.size >= 8 && cat !== PW_CAT && !CATCH.has(pw)) CATCH.set(pw, [...o.ids]);
 }
 function pwStats(ids) {
   const idx = DATA.index.get(UI.contrast); let up = 0, down = 0;
@@ -865,7 +908,7 @@ function refreshAll() {
   $('#dataBadge').textContent = DATA.mode === 'demo' ? `DEMO · ${DATA.entities.size.toLocaleString()} proteins · simulated values` : `REAL · ${DATA.dataset} · local only`;
   UI.highlight = new Set(); UI.px = { cat: null, pw: null, id: null };
   computeGroups();
-  renderVolcano(); sniperIntro(); if (CG.running) catcherOver(true); else catcherIntro(); renderExplorer(); renderDex(); renderBadges(); renderHUD(); renderSearch();
+  renderVolcano(); sniperIntro(); if (ER.running) eruptionOver(true); else eruptionIntro(); renderExplorer(); renderDex(); renderBadges(); renderHUD(); renderSearch();
   $('#card').innerHTML = '';
 }
 function renderSearch() {
@@ -883,21 +926,21 @@ function exportHits() {
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' })); a.download = `hits_${UI.contrast}_FDR${UI.fdr}_LFC${UI.lfc}.csv`; a.click();
 }
 function switchTab(id) {
-  if (UI.tab === 'tCatcher' && id !== 'tCatcher' && CG.running) catcherOver(true);
+  if (UI.tab === 'tCatcher' && id !== 'tCatcher' && ER.running) eruptionOver(true);
   if (UI.tab === 'tSniper' && id !== 'tSniper' && SN.running) sniperIntro('<p class="muted">Game stopped — press play to start again.</p>');
   UI.tab = id; SFX.play('click');
   document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('active', x.dataset.tab === id));
   document.querySelectorAll('.tabpane').forEach(p => { p.hidden = p.id !== id; });
   if (id === 'tExplore') renderExplorer();
-  if (id === 'tCatcher' && !CG.running) catcherIntro();
+  if (id === 'tCatcher' && !ER.running) eruptionIntro();
 }
 
 async function init() {
   loadStore(); me();
   $('#player').value = GAME.current;
-  $('#player').onchange = () => { GAME.current = $('#player').value.trim() || 'Player 1'; me(); saveStore(); renderHUD(); renderBadges(); renderDex(); sniperIntro(); catcherIntro(); };
+  $('#player').onchange = () => { GAME.current = $('#player').value.trim() || 'Player 1'; me(); saveStore(); renderHUD(); renderBadges(); renderDex(); sniperIntro(); eruptionIntro(); };
   $('#muteBtn').onclick = () => { GAME.muted = !GAME.muted; saveStore(); renderHUD(); if (!GAME.muted) SFX.play('xp'); };
-  $('#contrastSel').onchange = () => { UI.contrast = $('#contrastSel').value; UI.highlight = new Set(); renderVolcano(); renderSearch(); if (UI.tab === 'tExplore') renderExplorer(); };
+  $('#contrastSel').onchange = () => { UI.contrast = $('#contrastSel').value; UI.highlight = new Set(); renderVolcano(); renderSearch(); if (UI.tab === 'tExplore') renderExplorer(); if (ER.running) eruptionOver(true); else eruptionIntro(); };
   $('#fdrSlider').oninput = () => { UI.fdr = +$('#fdrSlider').value; syncSliders(); renderVolcano(); renderSearch(); };
   $('#lfcSlider').oninput = () => { UI.lfc = +$('#lfcSlider').value; syncSliders(); renderVolcano(); renderSearch(); };
   $('#resetCut').onclick = () => { UI.fdr = 0.1; UI.lfc = 1; UI.show = { up: true, down: true, ns: true, lod: true }; syncSliders(); renderVolcano(); renderSearch(); };
@@ -908,7 +951,6 @@ async function init() {
   document.addEventListener('keydown', ev => {
     if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName)) return;
     if (UI.tab === 'tSniper' && SN.running && !SN.answered) { if (ev.key === 'ArrowLeft') { sniperAnswer('pos'); ev.preventDefault(); } if (ev.key === 'ArrowRight') { sniperAnswer('neg'); ev.preventDefault(); } }
-    if (UI.tab === 'tCatcher' && CG.running) { if (ev.key === 'ArrowLeft') { CG.px = Math.max(CG.pw / 2, CG.px - 26); ev.preventDefault(); } if (ev.key === 'ArrowRight') { CG.px = Math.min(CG.W - CG.pw / 2, CG.px + 26); ev.preventDefault(); } }
   });
   document.addEventListener('pointerdown', () => SFX.ac(), { once: true }); // browsers need a click before audio
   $('#folder').onchange = async ev => {

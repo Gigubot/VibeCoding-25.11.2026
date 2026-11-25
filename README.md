@@ -41,7 +41,7 @@ Files used in REAL mode, all from the course `derived/` folder unless noted:
 | Game | How it plays | Teaches |
 |---|---|---|
 | 🎯 **Sign Sniper** | Arcade: 3 lives, 8-second timer per shot, combos multiply points, keyboard ← →, wrong or slow shots cost XP, high score. Interaction questions (×2) unlock at combo ×4 | `A_vs_B` means `diff = log2(A) − log2(B)` |
-| 🧪 **Family Catcher** | Protein bubbles fall; catch members of a family (UniProt keyword such as *Purine biosynthesis*, *Ribosomal protein*, *Virulence*) with a beaker and dodge impostors. Colour = direction in the current contrast, gold ring = passes your cutoffs (bonus), 🛡 shield power-up, rising speed | Which proteins belong together, and what the current contrast does to them |
+| 🌋 **Volcano Eruption** | No prior knowledge needed. Proteins erupt from a volcano and land at their real spot on the volcano plot of the current contrast. Click the ones in the shaded corners (significant *and* big change), leave the grey middle, never click a purple ✕ (imputed). Timer rings, quick-click bonus, combos, 3 lives; every 100 points the cutoffs change | What "significant" means on a volcano plot, and why imputed estimates are not real fold changes |
 | 🗺️ **Pathway Explorer** | Category → pathway → protein → **AlphaFold 3D model**, with ▲/▼ hit counts per pathway. The pathway is highlighted on the volcano | Pathway-level view of the data |
 | 🪤 **LOD Trap** | Clicking a purple × asks what `lod_imputed` means | An imputed estimate is presence/absence evidence, not a precise fold change |
 | 📉 **False-discovery meter** | Expected false hits ≤ FDR cutoff × hits, live | Multiple testing ("Reformed p-hacker" badge) |
@@ -77,6 +77,7 @@ Files used in REAL mode, all from the course `derived/` folder unless noted:
 
 - [x] v0.1: repo, volcano, games, local data loader
 - [x] v0.2: sound effects, arcade Sign Sniper with memes, Family Catcher, Pathway Explorer with 3D, all contrasts, show/hide switches
+- [x] v0.3: Volcano Eruption replaces Family Catcher (playable without knowing protein families)
 - [ ] Compare mode: two volcanoes side by side (e.g. anc vs stk PASN response)
 - [ ] Phospho vs parent protein: site effect minus protein effect
 - [ ] Shared leaderboard (e.g. a GitHub Gist) instead of per-browser storage

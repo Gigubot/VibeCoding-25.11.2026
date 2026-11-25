@@ -66,7 +66,10 @@
   .target { min-height:86px; font-size:14px; font-weight:700; border-radius:14px; background:radial-gradient(circle at 50% 50%, #fff 0 14%, #e15554 15% 28%, #fff 29% 42%, #e15554 43% 56%, #fbe3e2 57%); color:#14202e; border:2px solid #e15554; text-shadow:0 0 4px #fff, 0 0 4px #fff; }
   .target:hover { transform:scale(1.03); } .target.ok { background:#3bb273; color:#fff; text-shadow:none; border-color:#2a8a57; } .target.bad { background:#e8ecf1; color:#99a; text-shadow:none; border-color:#ccd; }
   .fb { border-radius:8px; padding:8px 10px; font-weight:600; } .fb.ok { background:#c9f0e3; } .fb.bad { background:#fde2e1; }
-  #cgCanvas { width:100%; height:400px; border-radius:12px; display:block; touch-action:none; cursor:none; outline:none; }
+  #erCanvas { width:100%; height:420px; border-radius:12px; display:block; touch-action:none; cursor:crosshair; outline:none; user-select:none; }
+  .howto { display:inline-block; text-align:left; background:#f6f8fb; border-radius:10px; padding:8px 12px; margin:4px 0; } .howto div { margin:3px 0; }
+  .zone { display:inline-block; width:14px; height:14px; border-radius:3px; vertical-align:middle; } .zone.o { background:linear-gradient(90deg,#0072b2 50%,#d55e00 50%); } .zone.g { background:#c3c9d2; }
+  .lodx { color:#7b5ea7; font-weight:900; }
   .chips { display:flex; flex-wrap:wrap; gap:4px; justify-content:center; } .mini { padding:2px 8px; font-size:12px; background:#2c3e50; }
   /* pathway explorer */
   .crumbs { font-size:13px; margin-bottom:4px; } .crumbs a { color:var(--teal); cursor:pointer; text-decoration:underline; }
@@ -151,7 +154,7 @@
 
   <section>
     <div class="tabs">
-      <button class="active" data-tab="tSniper">🎯 Sign Sniper</button><button data-tab="tCatcher">🧪 Family Catcher</button>
+      <button class="active" data-tab="tSniper">🎯 Sign Sniper</button><button data-tab="tCatcher">🌋 Volcano Eruption</button>
       <button data-tab="tExplore">🗺️ Pathway Explorer</button><button data-tab="tDex">📖 Pokédex</button>
       <button data-tab="tSearch">🔎 Browser</button><button data-tab="tBadges">🏆 Badges</button><button data-tab="tHelp">❓ Help</button>
     </div>
@@ -162,14 +165,14 @@
     <div class="tabpane" id="tSearch" hidden><h3>🔎 Protein browser</h3>
       <div class="row"><input id="search" placeholder="gene, locus tag, product, UniProt…" style="flex:1"><label><input id="onlyHits" type="checkbox"> hits only</label></div><div id="results"></div></div>
     <div class="tabpane" id="tBadges" hidden><h3>🏆 Badges</h3><div class="badges" id="badgeGrid"></div>
-      <h4>Leaderboard (this browser)</h4><table><thead><tr><th></th><th>player</th><th>XP</th><th>badges</th><th>🎯 best</th><th>🧪 best</th></tr></thead><tbody id="leaderboard"></tbody></table></div>
+      <h4>Leaderboard (this browser)</h4><table><thead><tr><th></th><th>player</th><th>XP</th><th>badges</th><th>🎯 best</th><th>🌋 best</th></tr></thead><tbody id="leaderboard"></tbody></table></div>
     <div class="tabpane" id="tHelp" hidden><h3>❓ How to play</h3>
       <ul>
         <li><b>Volcano:</b> pick one of the contrasts (grouped by type), move the sliders or drag the dashed lines. Use the <b>Show on plot</b> switches to hide or show up/down hits, non-selected proteins and LOD-imputed estimates.</li>
         <li><b>🪤 LOD Trap:</b> clicking a purple × asks what <code>lod_imputed</code> means before the card opens.</li>
         <li><b>📉 Meter:</b> with Benjamini–Hochberg at cutoff q, up to q × (number of hits) of your hits are expected to be false. Loosen past 0.25 and come back to ≤ 0.1 for a badge.</li>
         <li><b>🎯 Sign Sniper:</b> 3 lives, 8 s per shot, combos multiply points, wrong or slow answers cost XP. Interactions (R<sub>g</sub> = log2(SN<sub>g</sub>) − log2(TSB<sub>g</sub>)) unlock at combo ×4.</li>
-        <li><b>🧪 Family Catcher:</b> catch members of a protein family (from UniProt keywords) and dodge impostors. Orange = positive diff, blue = negative diff in the current contrast; gold ring = passes your cutoffs (bonus).</li>
+        <li><b>🌋 Volcano Eruption:</b> no biology knowledge needed. Proteins erupt and land at their real position on the volcano plot of the current contrast. Click the ones in the coloured corners (significant <i>and</i> big change), leave the grey middle, never click a purple ✕. Every 100 points the cutoffs change.</li>
         <li><b>🗺️ Pathway Explorer:</b> category → pathway → protein → AlphaFold 3D model. Pathways come from UniProt (NCTC8325 reference proteome). The chosen pathway is highlighted on the volcano.</li>
         <li><b>📖 Pokédex:</b> every opened protein is collected; 🧊 = structure viewed; 👑 = Stk1/Stp1. AlphaFold models are NCTC8325 reference proteins, so JE2 residue numbers can differ.</li>
         <li>🔊 Sounds can be muted with the speaker button in the header. Plot per-sample values before trusting a fold change; missing values are NA, never 0. PASN is spent medium, not co-culture. The stp mutant also has less Stk1.</li>
